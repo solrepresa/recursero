@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recursero — el tiempo es una decisión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Palette — human experience editorial */
+  --bg:       #0d0b08;
+  --surface:  #141210;
+  --surface2: #1c1916;
+  --surface3: #221f1b;
+  --border:   rgba(237,232,218,0.07);
+  --border2:  rgba(237,232,218,0.14);
+  --border3:  rgba(237,232,218,0.22);
+  --text:     #ede8df;
+  --muted:    rgba(237,232,223,0.52);
+  --faint:    rgba(237,232,223,0.22);
+
+  /* Accents — gallery palette */
+  --aa: #c9a86c;   /* ochre gold */
+  --ab: #8aad9f;   /* sage */
+  --ac: #a99bbf;   /* dusty lavender */
+  --ad: #c07e6a;   /* terracotta */
+  --ae: #7fa5be;   /* slate blue */
+
+  --serif: 'Playfair Display', Georgia, serif;
+  --sans:  'Jost', system-ui, sans-serif;
+}
+
+html {
+  font-size: 18px;
+}
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  overflow: hidden;
+}
+
+/* GRAIN OVERLAY */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 100;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 180px;
+  opacity: 0.028;
+  mix-blend-mode: screen;
+}
+
+#bg-canvas { position: fixed; inset: 0; z-index: 0; opacity: 0.18; pointer-events: none; }
+#slides    { position: fixed; inset: 0; z-index: 1; }
+
+/* ─── SLIDES ─── */
+.slide {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  padding: 3.5rem 5.5rem 5rem;
+  opacity: 0; transform: translateY(28px);
+  transition: opacity .55s cubic-bezier(.4,0,.2,1), transform .55s cubic-bezier(.4,0,.2,1);
+  pointer-events: none;
+}
+.slide.active { opacity: 1; transform: translateY(0); pointer-events: all; }
+.slide.exit   { opacity: 0; transform: translateY(-28px); }
+
+/* ─── SECTION HEADER ─── */
+.sh {
+  display: flex; align-items: baseline; gap: 1.5rem;
+  margin-bottom: 2rem; padding-bottom: 1rem;
+  border-bottom: .5px solid var(--border);
+  flex-shrink: 0;
+}
+.sh-num {
+  font-family: var(--sans);
+  font-size: .58rem; letter-spacing: .3em;
+  color: var(--faint); font-weight: 400;
+}
+.sh-title {
+  font-family: var(--serif);
+  font-size: clamp(1.3rem, 2.4vw, 2rem);
+  font-weight: 400; font-style: italic;
+  color: var(--text); letter-spacing: -.01em;
+}
+.sh-desc {
+  font-size: .65rem; color: var(--muted);
+  margin-left: auto; max-width: 34ch;
+  text-align: right; line-height: 1.8;
+  font-weight: 300; letter-spacing: .01em;
+}
+
+/* ─── RESOURCE GRID ─── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 1rem; flex: 1;
+  overflow-y: auto; padding-right: .5rem; min-height: 0;
+}
+.grid::-webkit-scrollbar { width: 1px; }
+.grid::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+.grid.cols3 { grid-template-columns: repeat(3, 1fr); }
+
+/* ─── CARD ─── */
+.card {
+  background: var(--surface);
+  border: .5px solid var(--border);
+  border-radius: 2px;
+  padding: 1.2rem 1.25rem;
+  text-decoration: none; color: inherit;
+  display: flex; flex-direction: column; gap: .5rem;
+  transition: background .2s, border-color .2s, transform .2s;
+  cursor: pointer; position: relative; overflow: hidden;
+}
+.card::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0) 60%, rgba(255,255,255,.018));
+  pointer-events: none;
+}
+.card::before {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: .5px;
+  opacity: 0; transition: opacity .2s;
+}
+.card:hover {
+  background: var(--surface2);
+  border-color: var(--border2);
+  transform: translateY(-3px);
+}
+.card:hover::before { opacity: 1; }
+.card.gen::before { background: var(--aa); }
+.card.cap::before { background: var(--ab); }
+.card.cod::before { background: var(--ac); }
+.card.dat::before { background: var(--ae); }
+.card.tip::before { background: var(--aa); }
+.card.wide { grid-column: span 2; }
+
+.card-head { display: flex; align-items: center; justify-content: space-between; }
+.card-name {
+  font-family: var(--sans);
+  font-size: .8rem; font-weight: 500;
+  color: var(--text); letter-spacing: .01em;
+}
+.card-arrow {
+  font-size: .6rem; color: var(--faint);
+  transition: color .18s, transform .18s;
+  font-weight: 300;
+}
+.card:hover .card-arrow { color: var(--ab); transform: translate(3px, -3px); }
+.card-desc {
+  font-size: .67rem; color: var(--muted);
+  line-height: 1.7; font-weight: 300;
+}
+.card-prompt {
+  background: rgba(138,173,159,.05);
+  border: .5px solid rgba(138,173,159,.14);
+  border-radius: 2px; padding: .5rem .65rem;
+}
+.card-prompt-label {
+  font-size: .54rem; letter-spacing: .18em;
+  text-transform: uppercase;
+  color: rgba(138,173,159,.5); margin-bottom: .28rem;
+}
+.card-prompt-text {
+  font-size: .63rem; color: rgba(237,232,223,.44);
+  line-height: 1.65; font-style: italic; font-weight: 300;
+}
+.card.tip .card-prompt {
+  background: rgba(201,168,108,.05);
+  border-color: rgba(201,168,108,.14);
+}
+.card.tip .card-prompt-label { color: rgba(201,168,108,.5); }
+
+/* ─── ACORDEÓN TIPS ─── */
+.card.tip { cursor: pointer; }
+.card.tip .card-head { cursor: pointer; }
+.acc-toggle {
+  font-size: .55rem; color: var(--aa);
+  border: .5px solid rgba(201,168,108,.28);
+  border-radius: 99px;
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: transform .3s cubic-bezier(.4,0,.2,1), background .2s;
+  font-weight: 300; line-height: 1;
+}
+.card.tip.open .acc-toggle { transform: rotate(45deg); background: rgba(201,168,108,.1); }
+.acc-body {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height .38s cubic-bezier(.4,0,.2,1), opacity .3s ease;
+  opacity: 0;
+}
+.card.tip.open .acc-body { max-height: 800px; opacity: 1; }
+.acc-body-inner { display: flex; flex-direction: column; gap: .5rem; padding-top: .45rem; }
+
+.card-tag {
+  font-size: .55rem; letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: .14rem .55rem; border-radius: 99px;
+  display: inline-block; align-self: flex-start;
+  margin-top: auto; padding-top: .4rem;
+  font-weight: 400;
+}
+.card.gen .card-tag { background: rgba(201,168,108,.1); color: var(--aa); }
+.card.cap .card-tag { background: rgba(138,173,159,.1); color: var(--ab); }
+.card.cod .card-tag { background: rgba(169,155,191,.1); color: var(--ac); }
+.card.dat .card-tag { background: rgba(127,165,190,.1); color: var(--ae); }
+
+/* ─── LANG CARD ─── */
+.lang-card {
+  background: var(--surface); border: .5px solid var(--border); border-radius: 2px;
+  padding: 1.25rem 1.4rem; display: flex; flex-direction: column;
+  gap: .7rem; position: relative; overflow: hidden;
+}
+.lang-card::before {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: .5px;
+  background: var(--ad); opacity: .55;
+}
+.lang-name {
+  font-family: var(--serif);
+  font-size: .95rem; font-weight: 400;
+  font-style: italic; color: var(--text);
+}
+.lang-use { font-size: .67rem; color: var(--muted); line-height: 1.7; font-weight: 300; }
+.lang-links { display: flex; gap: .5rem; flex-wrap: wrap; }
+.lang-link {
+  font-size: .6rem; color: var(--ad);
+  text-decoration: none;
+  border: .5px solid rgba(192,126,106,.2);
+  border-radius: 99px; padding: .2rem .6rem;
+  transition: background .15s; font-weight: 400;
+  letter-spacing: .04em;
+}
+.lang-link:hover { background: rgba(192,126,106,.09); }
+
+/* ─── PORTADA ─── */
+#slide-0 { justify-content: center; }
+.p-eyebrow {
+  font-size: .58rem; letter-spacing: .3em;
+  color: var(--faint); text-transform: uppercase;
+  margin-bottom: 2.2rem; font-weight: 400;
+}
+.p-title {
+  font-family: var(--serif);
+  font-size: clamp(3rem, 6vw, 5.5rem);
+  font-weight: 400; font-style: italic;
+  line-height: 1.02; color: var(--text);
+  margin-bottom: 1.2rem; letter-spacing: -.02em;
+}
+.p-title em { color: var(--aa); font-style: inherit; }
+.p-sub {
+  font-size: .73rem; color: var(--muted);
+  line-height: 1.95; max-width: 52ch;
+  margin-bottom: 2.8rem; font-weight: 300;
+}
+.flow { display: flex; align-items: center; gap: .8rem; margin-bottom: 2.5rem; flex-wrap: wrap; }
+.flow-step {
+  font-size: .58rem; letter-spacing: .15em;
+  text-transform: uppercase;
+  padding: .32rem .75rem;
+  border: .5px solid var(--border); border-radius: 2px;
+  color: var(--muted); font-weight: 400;
+}
+.flow-step.s1 { border-color: rgba(201,168,108,.3); color: var(--aa); }
+.flow-step.s2 { border-color: rgba(138,173,159,.3); color: var(--ab); }
+.flow-step.s3 { border-color: rgba(169,155,191,.3); color: var(--ac); }
+.flow-arrow { font-size: .55rem; color: var(--faint); }
+.p-chips { display: flex; gap: .55rem; flex-wrap: wrap; }
+.chip {
+  font-size: .58rem; letter-spacing: .16em;
+  text-transform: uppercase;
+  padding: .3rem .85rem; border-radius: 99px;
+  border: .5px solid var(--border2); color: var(--muted); font-weight: 400;
+}
+.chip.a { border-color: rgba(201,168,108,.35); color: var(--aa); }
+.chip.b { border-color: rgba(138,173,159,.35); color: var(--ab); }
+.chip.c { border-color: rgba(169,155,191,.35); color: var(--ac); }
+.chip.d { border-color: rgba(127,165,190,.35); color: var(--ae); }
+.p-hint {
+  position: absolute; bottom: 5rem; right: 5.5rem;
+  font-size: .6rem; color: var(--faint);
+  text-align: right; line-height: 2; font-weight: 300;
+}
+
+
+
+/* ─── NAV ─── */
+#nav {
+  position: fixed; bottom: 2rem; left: 50%;
+  transform: translateX(-50%); z-index: 10;
+  display: flex; align-items: center; gap: .6rem;
+  background: rgba(13,11,8,.88);
+  backdrop-filter: blur(16px) saturate(1.2);
+  border: .5px solid var(--border2);
+  border-radius: 2px;
+  padding: .6rem 1.2rem;
+}
+.nav-dot {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--faint); cursor: pointer; border: none;
+  transition: background .22s, transform .22s; flex-shrink: 0;
+}
+.nav-dot.active { background: var(--aa); transform: scale(1.6); }
+.nav-sep { width: .5px; height: 11px; background: var(--border); margin: 0 .2rem; flex-shrink: 0; }
+.nav-btn {
+  background: none; border: none; color: var(--muted);
+  font-family: var(--sans); font-size: .65rem;
+  cursor: pointer; padding: .1rem .38rem;
+  transition: color .18s; font-weight: 300;
+}
+.nav-btn:hover { color: var(--text); }
+#slide-counter {
+  font-size: .56rem; color: var(--faint);
+  letter-spacing: .15em; min-width: 3.5ch; text-align: center;
+  font-weight: 400;
+}
+
+/* ─── SIGNATURE LINE ─── */
+.p-signature {
+  position: absolute; bottom: 2rem; left: 5.5rem;
+  display: flex; align-items: center; gap: 1.5rem;
+}
+.p-sig-brand {
+  font-family: var(--serif); font-style: italic;
+  font-size: .8rem; color: var(--faint); font-weight: 400;
+}
+.p-sig-line { width: 40px; height: .5px; background: var(--border2); }
+.p-sig-sub {
+  font-size: .56rem; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--faint); font-weight: 400;
+}
+</style>
+</head>
+<body>
+<canvas id="bg-canvas"></canvas>
+<div id="slides">
+
+<!-- 0: PORTADA -->
+<div class="slide active" id="slide-0">
+  <p class="p-eyebrow">Human Experience · hackathon · arte &amp; ciencia</p>
+  <h1 class="p-title">el tiempo<br>es una <em>decisión</em></h1>
+  <p class="p-sub">Un sistema audiovisual que se modifica cuando los cuerpos (volúmenes geométricos)<br>se desplazan sobre la superficie. Lo que ese encuentro hace al tiempo, lo decidís vos.</p>
+  <div class="flow">
+    <span class="flow-step s1">01 generar</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step s2">02 capturar</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step s2">03 detectar</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step s3">04 conectar</span>
+  </div>
+  <div class="p-chips">
+    <span class="chip a">ia generativa</span>
+    <span class="chip b">visión computacional</span>
+    <span class="chip c">síntesis &amp; proyección</span>
+    <span class="chip">lenguajes</span>
+    <span class="chip d">datasets</span>
+    <span class="chip">glosario</span>
+    <span class="chip">consejos</span>
+  </div>
+  <p class="p-hint">← → teclado para navegar<br>clic en cada tarjeta para abrir el recurso</p>
+  <div class="p-signature">
+    <span class="p-sig-brand">Human Experience</span>
+    <span class="p-sig-line"></span>
+    <span class="p-sig-sub">Clínica de Arte Contemporáneo</span>
+  </div>
+</div>
+
+<!-- 1: GENERAR -->
+<div class="slide" id="slide-1">
+  <div class="sh">
+    <span class="sh-num">01</span>
+    <h2 class="sh-title">Generar — el material audiovisual</h2>
+    <span class="sh-desc">Creá el contenido que vas a proyectar y alterar.<br>Imagen, video, audio generado o encontrado.</span>
+  </div>
+  <div class="grid">
+    <a class="card gen wide" href="https://runwayml.com" target="_blank">
+      <div class="card-head"><span class="card-name">Runway ML</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Generá clips de video desde texto o imagen. Ese clip es el material base que el sistema va a alterar en tiempo real cuando los cuerpos se encuentren sobre la superficie.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Tengo un video de 10 segundos. Dame código en p5.js para reproducirlo en loop y controlar su velocidad con una variable numérica."</p></div>
+      <span class="card-tag">video generativo</span>
+    </a>
+    <a class="card gen" href="https://stability.ai/stable-diffusion" target="_blank">
+      <div class="card-head"><span class="card-name">Stable Diffusion</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Generá imágenes fijas para fondos o texturas de la proyección. Podés hacer series que el sistema navega según el movimiento detectado.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame código p5.js para hacer crossfade entre dos imágenes, controlado por una variable entre 0 y 1."</p></div>
+      <span class="card-tag">imagen</span>
+    </a>
+    <a class="card gen" href="https://suno.com" target="_blank">
+      <div class="card-head"><span class="card-name">Suno</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Generá música desde texto: describe el mood, tempo, estilo. El audio resultante puede modificarse en velocidad o pitch según la proximidad de los cuerpos.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame código JavaScript para reproducir un archivo de audio y cambiar su playbackRate según una variable entre 0.5 y 2."</p></div>
+      <span class="card-tag">audio generativo</span>
+    </a>
+    <a class="card gen" href="https://elevenlabs.io/sound-effects" target="_blank">
+      <div class="card-head"><span class="card-name">ElevenLabs Sound FX</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Sonidos específicos generados desde descripción. Útil para capa sonora de eventos discretos: cuando los cuerpos se tocan, se alejan o cruzan un umbral.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame código p5.js para reproducir un sonido solo cuando una variable cambia de false a true, sin que se repita mientras sigue true."</p></div>
+      <span class="card-tag">efectos de sonido</span>
+    </a>
+    <a class="card gen" href="https://app.udio.com" target="_blank">
+      <div class="card-head"><span class="card-name">Udio</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Generación musical con control de instrumentación y estructura. Alternativa a Suno con diferente estilo de salida. Bueno para capas de audio ambiente.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame código para hacer crossfade entre dos archivos de audio según el valor de una variable numérica entre 0 y 1."</p></div>
+      <span class="card-tag">audio generativo</span>
+    </a>
+  </div>
+</div>
+
+<!-- 2: CAPTURAR -->
+<div class="slide" id="slide-2">
+  <div class="sh">
+    <span class="sh-num">02</span>
+    <h2 class="sh-title">Capturar — leer lo que pasa en la mesa</h2>
+    <span class="sh-desc">Herramientas para acceder a la cámara<br>y extraer información del mundo físico.</span>
+  </div>
+  <div class="grid">
+    <a class="card cap wide" href="https://p5js.org/reference/p5/createCapture/" target="_blank">
+      <div class="card-head"><span class="card-name">p5.js — createCapture(VIDEO)</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Una línea de código para abrir la cámara en el navegador. El punto de entrada más directo: obtenés el feed sin instalar nada. Todo corre en el browser.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame código p5.js completo para abrir la cámara, mostrar el feed en pantalla y calcular la diferencia entre frames consecutivos para detectar movimiento."</p></div>
+      <span class="card-tag">detección de movimiento</span>
+    </a>
+    <a class="card cap" href="https://developers.google.com/mediapipe/solutions/vision/object_detector" target="_blank">
+      <div class="card-head"><span class="card-name">MediaPipe — Object Detection</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Detecta y localiza objetos en el video en tiempo real. Podés entrenar o usar modelos preexistentes para identificar los cuerpos por forma o posición.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame código JavaScript para usar MediaPipe Object Detector en el navegador, detectar dos objetos y calcular la distancia entre sus centros."</p></div>
+      <span class="card-tag">detección de objetos</span>
+    </a>
+    <a class="card cap wide" href="https://teachablemachine.withgoogle.com/" target="_blank">
+      <div class="card-head"><span class="card-name">Teachable Machine — entrenamiento visual sin código</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Entrenás un modelo de reconocimiento directamente en el navegador con la cámara: mostrás cada cuerpo, sacás fotos de cada clase, entrenás con un clic y exportás el modelo. Sin instalar nada, sin escribir código de ML. Es el punto de partida recomendado para que el sistema reconozca los cuerpos específicos que traen al hackathon.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Tengo un modelo exportado de Teachable Machine. Dame código p5.js para cargarlo con ml5, clasificar lo que ve la cámara en tiempo real y usar la clase detectada para controlar un efecto visual."</p></div>
+      <span class="card-tag">reconocimiento de cuerpos</span>
+    </a>
+    <a class="card cap" href="https://ml5js.org/reference/image-classifier/" target="_blank">
+      <div class="card-head"><span class="card-name">ml5.js — Image Classifier</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Machine learning en el navegador sin setup. Carga modelos de Teachable Machine directamente y los integra con p5.js. El puente entre el modelo entrenado y la proyección.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame código p5.js con ml5 para clasificar en tiempo real lo que ve la cámara y mostrar el resultado en pantalla."</p></div>
+      <span class="card-tag">clasificación</span>
+    </a>
+    <a class="card cap" href="https://docs.opencv.org/4.x/d6/d00/tutorial_py_root.html" target="_blank">
+      <div class="card-head"><span class="card-name">OpenCV (Python)</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">La librería más robusta para visión computacional. Detección por color, contornos, formas. Si el equipo viene de Python, es el camino más directo y documentado.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame código Python con OpenCV para detectar contornos de dos objetos de colores distintos y calcular la distancia entre sus centros en tiempo real."</p></div>
+      <span class="card-tag">visión computacional</span>
+    </a>
+    <a class="card cap" href="https://github.com/niconicoflow/arucopy" target="_blank">
+      <div class="card-head"><span class="card-name">ArUco Markers</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Marcadores visuales impresos que la cámara detecta con precisión milimétrica. Si pegás uno en cada cuerpo, el sistema sabe exactamente dónde está cada uno.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame código Python con OpenCV para detectar dos marcadores ArUco, obtener sus coordenadas y calcular la distancia entre ellos."</p></div>
+      <span class="card-tag">tracking preciso</span>
+    </a>
+  </div>
+</div>
+
+<!-- 3: CONECTAR / CÓDIGO -->
+<div class="slide" id="slide-3">
+  <div class="sh">
+    <span class="sh-num">04</span>
+    <h2 class="sh-title">Conectar — código para unir detección y proyección</h2>
+    <span class="sh-desc">Entornos y frameworks para<br>construir el sistema completo.</span>
+  </div>
+  <div class="grid">
+    <a class="card cod wide" href="https://p5js.org" target="_blank">
+      <div class="card-head"><span class="card-name">p5.js — el entorno base recomendado</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Cámara + detección + proyección en un solo archivo HTML. Sin instalar nada. El ecosistema más accesible para arte computacional: miles de ejemplos, integración directa con MediaPipe y ml5.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame el esqueleto de una sketch p5.js que: abre la cámara, detecta movimiento, y usa ese valor (0 a 1) para controlar la velocidad de reproducción de un video."</p></div>
+      <span class="card-tag">prototipo completo</span>
+    </a>
+    <a class="card cod" href="https://derivative.ca/UserGuide/TouchDesigner" target="_blank">
+      <div class="card-head"><span class="card-name">TouchDesigner</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Programación por nodos: conectás bloques sin escribir código. La cámara entra por un nodo, el movimiento detectado sale como un valor, ese valor controla efectos de video.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Explicame paso a paso cómo conectar un nodo de cámara con un nodo de velocidad de video en TouchDesigner. Soy principiante."</p></div>
+      <span class="card-tag">nodal / sin código</span>
+    </a>
+    <a class="card cod" href="https://cycling74.com/products/max" target="_blank">
+      <div class="card-head"><span class="card-name">Max / Jitter</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Programación visual para audio y video en vivo. Jitter procesa video frame a frame. Muy potente para manipulación sonora reactiva. Si hay alguien con experiencia, es el más flexible.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"En Max/MSP, cómo uso un valor numérico para cambiar el tempo de un clip de audio en tiempo real."</p></div>
+      <span class="card-tag">audio / video live</span>
+    </a>
+    <a class="card cod" href="https://processing.org" target="_blank">
+      <div class="card-head"><span class="card-name">Processing</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Entorno clásico de arte computacional. Miles de ejemplos de instalaciones físico-digitales. Buena opción si el equipo prefiere un entorno de escritorio en lugar del navegador.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame código Processing que abra la cámara, detecte movimiento por diferencia de frames y use ese valor para modificar la velocidad de un video."</p></div>
+      <span class="card-tag">instalaciones</span>
+    </a>
+    <a class="card cod" href="https://threejs.org" target="_blank">
+      <div class="card-head"><span class="card-name">Three.js — efectos visuales reactivos</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Si la proyección va a tener profundidad o distorsión visual, Three.js permite shaders que reaccionan a variables en tiempo real. Texturas, deformaciones, efectos de tiempo alterado.</p>
+      <div class="card-prompt"><p class="card-prompt-label">pedile a Claude o ChatGPT</p><p class="card-prompt-text">"Dame un fragment shader en GLSL para Three.js que distorsione una imagen según un valor u_encuentro entre 0 y 1."</p></div>
+      <span class="card-tag">3d / shaders</span>
+    </a>
+  </div>
+</div>
+
+<!-- 4: LENGUAJES -->
+<div class="slide" id="slide-4">
+  <div class="sh">
+    <span class="sh-num">05</span>
+    <h2 class="sh-title">Lenguajes — con IA para escribir el código</h2>
+    <span class="sh-desc">No hace falta saber programar de antemano.<br>Conocer el lenguaje le da contexto a Claude o ChatGPT para escribirlo por vos.</span>
+  </div>
+  <div class="grid cols3">
+    <div class="lang-card">
+      <span class="lang-name">JavaScript</span>
+      <p class="lang-use">Corre en el navegador sin instalar nada. Base de p5.js, Three.js, ml5 y MediaPipe. El punto de partida más accesible: abrís un HTML y funciona.</p>
+      <div class="lang-links">
+        <a class="lang-link" href="https://developer.mozilla.org/es/docs/Web/JavaScript/Guide" target="_blank">MDN guía</a>
+        <a class="lang-link" href="https://javascript.info" target="_blank">javascript.info</a>
+        <a class="lang-link" href="https://p5js.org/reference/" target="_blank">p5 referencia</a>
+        <a class="lang-link" href="https://stackoverflow.com/questions/tagged/javascript" target="_blank">Stack Overflow</a>
+      </div>
+    </div>
+    <div class="lang-card">
+      <span class="lang-name">Python</span>
+      <p class="lang-use">Muy usado en ciencia de datos y visión computacional. OpenCV, MediaPipe y TensorFlow tienen soporte nativo con miles de ejemplos. Ideal si el equipo viene del mundo científico.</p>
+      <div class="lang-links">
+        <a class="lang-link" href="https://docs.python.org/es/3/tutorial/" target="_blank">Tutorial oficial</a>
+        <a class="lang-link" href="https://opencv-python-tutroals.readthedocs.io" target="_blank">OpenCV Python</a>
+        <a class="lang-link" href="https://www.kaggle.com/learn" target="_blank">Kaggle Learn</a>
+        <a class="lang-link" href="https://stackoverflow.com/questions/tagged/python" target="_blank">Stack Overflow</a>
+      </div>
+    </div>
+    <div class="lang-card">
+      <span class="lang-name">Processing (Java)</span>
+      <p class="lang-use">Diseñado para artistas y diseñadores. Sintaxis simple, entorno propio, miles de ejemplos de instalaciones. Históricamente el lenguaje del arte computacional.</p>
+      <div class="lang-links">
+        <a class="lang-link" href="https://processing.org/reference/" target="_blank">Referencia</a>
+        <a class="lang-link" href="https://processing.org/examples/" target="_blank">Ejemplos</a>
+        <a class="lang-link" href="https://discourse.processing.org" target="_blank">Comunidad</a>
+        <a class="lang-link" href="https://openprocessing.org" target="_blank">OpenProcessing</a>
+      </div>
+    </div>
+    <div class="lang-card">
+      <span class="lang-name">GLSL</span>
+      <p class="lang-use">El lenguaje de los shaders: corre en la GPU y genera efectos visuales en tiempo real. Va dentro de p5.js o Three.js. Muy potente para distorsionar imagen reactivamente.</p>
+      <div class="lang-links">
+        <a class="lang-link" href="https://book.of-shaders.com" target="_blank">Book of Shaders</a>
+        <a class="lang-link" href="https://shadertoy.com" target="_blank">Shadertoy</a>
+        <a class="lang-link" href="https://thebookofshaders.com/glossary/" target="_blank">Glosario GLSL</a>
+      </div>
+    </div>
+    <div class="lang-card">
+      <span class="lang-name">Max / Pure Data</span>
+      <p class="lang-use">Programación por nodos y cables, sin texto. Para síntesis de audio y video en vivo. Pure Data es la versión gratuita y abierta de Max. Muy usado en instalaciones y performance.</p>
+      <div class="lang-links">
+        <a class="lang-link" href="https://cycling74.com/learn" target="_blank">Max Learn</a>
+        <a class="lang-link" href="https://puredata.info/docs/tutorials" target="_blank">PD tutoriales</a>
+        <a class="lang-link" href="https://forum.pdpatchrepo.info" target="_blank">PD comunidad</a>
+      </div>
+    </div>
+    <div class="lang-card">
+      <span class="lang-name">HTML + CSS</span>
+      <p class="lang-use">La base de cualquier página. Si el sistema corre en el navegador, entender HTML básico permite armarlo todo en un archivo sin instalar nada. El contenedor de todo lo demás.</p>
+      <div class="lang-links">
+        <a class="lang-link" href="https://developer.mozilla.org/es/docs/Learn" target="_blank">MDN Learn</a>
+        <a class="lang-link" href="https://css-tricks.com" target="_blank">CSS-Tricks</a>
+        <a class="lang-link" href="https://codepen.io" target="_blank">CodePen</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 5: DATASETS -->
+<div class="slide" id="slide-5">
+  <div class="sh">
+    <span class="sh-num">06</span>
+    <h2 class="sh-title">Datasets — datos como material</h2>
+    <span class="sh-desc">Datos científicos como capa de contenido.<br>Estructuras, patrones y series temporales para incorporar al audiovisual.</span>
+  </div>
+  <div class="grid">
+    <a class="card dat" href="https://zenodo.org" target="_blank">
+      <div class="card-head"><span class="card-name">Zenodo</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Repositorio científico del CERN. Datos de física, biología, ciencias sociales. Cada dataset tiene DOI. Búsqueda por disciplina o palabra clave.</p>
+      <span class="card-tag">multidisciplinar</span>
+    </a>
+    <a class="card dat" href="https://openneuro.org" target="_blank">
+      <div class="card-head"><span class="card-name">OpenNeuro</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Datos de neuroimagen (fMRI, EEG). Series temporales de actividad cerebral: ritmos, oscilaciones, patrones de percepción del tiempo.</p>
+      <span class="card-tag">neurociencia</span>
+    </a>
+    <a class="card dat" href="https://opendata.cern.ch" target="_blank">
+      <div class="card-head"><span class="card-name">CERN Open Data</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Trayectorias de partículas del LHC. Datos con geometría visual muy rica para traducir en movimiento o estructura de la proyección.</p>
+      <span class="card-tag">física de partículas</span>
+    </a>
+    <a class="card dat" href="https://data.nasa.gov" target="_blank">
+      <div class="card-head"><span class="card-name">NASA Open Data</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Imágenes satelitales, datos de misiones, clima espacial, exoplanetas. APIs libres. Series temporales de fenómenos astronómicos.</p>
+      <span class="card-tag">espacio</span>
+    </a>
+    <a class="card dat" href="https://www.gbif.org" target="_blank">
+      <div class="card-head"><span class="card-name">GBIF — Biodiversidad</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Registros georreferenciados de especies a lo largo del tiempo. Distribución, migración, aparición y desaparición con dimensión temporal explícita.</p>
+      <span class="card-tag">biodiversidad</span>
+    </a>
+    <a class="card dat" href="https://www.kaggle.com/datasets" target="_blank">
+      <div class="card-head"><span class="card-name">Kaggle Datasets</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Miles de datasets listos para usar. Clima, movimiento, sonido, series temporales. El más accesible para prototipado rápido dentro del día.</p>
+      <span class="card-tag">general</span>
+    </a>
+    <a class="card dat" href="https://archive.org" target="_blank">
+      <div class="card-head"><span class="card-name">Internet Archive</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Millones de archivos de audio, video, imágenes y texto en dominio público. Material de archivo con capas históricas y temporales.</p>
+      <span class="card-tag">archivo / cultura</span>
+    </a>
+    <a class="card dat" href="https://freesound.org" target="_blank">
+      <div class="card-head"><span class="card-name">Freesound</span><span class="card-arrow">↗</span></div>
+      <p class="card-desc">Base colaborativa de sonidos en Creative Commons. Texturas sonoras, ambientes, grabaciones de campo. Material directo sin restricciones de uso.</p>
+      <span class="card-tag">audio</span>
+    </a>
+  </div>
+</div>
+
+<!-- 6: TIPS -->
+<div class="slide" id="slide-6">
+  <div class="sh">
+    <span class="sh-num">08</span>
+    <h2 class="sh-title">Cómo hablarle a la IA — consejos para el día</h2>
+    <span class="sh-desc">Prompts concretos para avanzar más rápido<br>y no gastar tiempo ni tokens de más.</span>
+  </div>
+  <div class="grid">
+
+    <!-- CARD WIDE — Estrategia del día -->
+    <div class="card tip wide">
+      <div class="card-head">
+        <span class="card-name">Estrategia del día — cómo distribuir las 4 horas</span>
+        <span class="acc-toggle">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p class="card-desc">La mayoría de los equipos pierde tiempo yendo directo al código sin tener claro qué quieren hacer. Esta secuencia está pensada para llegar al final con algo que funcione <em>y</em> tenga peso conceptual.</p>
+          <div class="card-prompt">
+            <p class="card-prompt-label">bloque 1 — 10:00 a 10:30 · concepto</p>
+            <p class="card-prompt-text">Antes de abrir el editor: ¿qué idea trabaja la pieza? ¿Qué pasa visualmente cuando los cuerpos se acercan, se tocan, se alejan? Definan una sola metáfora visual y comprométanse con ella.</p>
+          </div>
+          <div class="card-prompt">
+            <p class="card-prompt-label">bloque 2 — 10:30 a 12:00 · modelo + detección</p>
+            <p class="card-prompt-text">Entrenar Teachable Machine con los cuerpos reales en el espacio real con la luz real. No en otro lado. Probar el modelo hasta que reconozca bien. Integrar con p5.js + ml5.</p>
+          </div>
+          <div class="card-prompt">
+            <p class="card-prompt-label">bloque 3 — 14:00 a 15:30 · animación + integración</p>
+            <p class="card-prompt-text">Conectar la detección con la animación generativa. Que algo visible cambie cuando los cuerpos se mueven. No tiene que ser complejo: tiene que ser coherente con la idea del bloque 1.</p>
+          </div>
+          <div class="card-prompt">
+            <p class="card-prompt-label">bloque 4 — 15:30 a 16:00 · ajuste y presentación</p>
+            <p class="card-prompt-text">Dejen de agregar features. Ajusten lo que ya funciona: velocidad, colores, sensibilidad. Ensayen la presentación de 4 minutos. El jurado evalúa concepto y experiencia, no cantidad de funciones.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD — No pegues el código entero -->
+    <div class="card tip">
+      <div class="card-head">
+        <span class="card-name">No pegues el código entero de nuevo</span>
+        <span class="acc-toggle">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p class="card-desc">No pegues el código completo cada vez. Si ya lo escribió en el mismo chat, alcanza con señalar qué parte querés cambiar.</p>
+          <div class="card-prompt">
+            <p class="card-prompt-label">en vez de pegar todo, decile</p>
+            <p class="card-prompt-text">"En el código que escribiste, modificá solo la función que detecta movimiento para que devuelva un valor entre 0 y 1 en lugar de true/false."</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD — Documentar -->
+    <div class="card tip">
+      <div class="card-head">
+        <span class="card-name">Pedile que te documente el código</span>
+        <span class="acc-toggle">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p class="card-desc">Antes de usar el código que te generó, pedile que te explique cada parte. Así sabés dónde tocar si algo no funciona.</p>
+          <div class="card-prompt">
+            <p class="card-prompt-label">prompt directo</p>
+            <p class="card-prompt-text">"Documentá este código. Para cada función, explicá en una línea qué hace y qué pasa si cambio sus parámetros principales."</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD — Mapa de parámetros -->
+    <div class="card tip">
+      <div class="card-head">
+        <span class="card-name">Pedile un mapa de parámetros</span>
+        <span class="acc-toggle">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p class="card-desc">Cuando el código funciona y querés explorar efectos sin entender todo, pedile una lista de qué tocar y qué cambia.</p>
+          <div class="card-prompt">
+            <p class="card-prompt-label">prompt directo</p>
+            <p class="card-prompt-text">"¿Qué variables puedo modificar para cambiar velocidad, color, tamaño o intensidad del efecto? Dame el nombre de cada una, qué controla y qué rango tiene sentido."</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD — Sliders -->
+    <div class="card tip">
+      <div class="card-head">
+        <span class="card-name">Pedile sliders para explorar en vivo</span>
+        <span class="acc-toggle">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p class="card-desc">En lugar de editar el código cada vez que querés probar un valor, pedile que agregue controles directamente en la pantalla.</p>
+          <div class="card-prompt">
+            <p class="card-prompt-label">prompt directo</p>
+            <p class="card-prompt-text">"Agregá sliders HTML al lado del canvas para controlar los parámetros principales en tiempo real. Que cada slider muestre su valor actual."</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD — Capas -->
+    <div class="card tip">
+      <div class="card-head">
+        <span class="card-name">Construí en capas, no de una</span>
+        <span class="acc-toggle">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p class="card-desc">Pedir todo junto genera código difícil de debuggear. Pedí una parte, probala, y después seguís. Ahorra tiempo y tokens.</p>
+          <div class="card-prompt">
+            <p class="card-prompt-label">cómo empezar</p>
+            <p class="card-prompt-text">"Primero hacé solo la parte que abre la cámara y muestra el feed en un canvas. Cuando eso funcione, te pido la detección de movimiento."</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD — Error -->
+    <div class="card tip">
+      <div class="card-head">
+        <span class="card-name">Pegá el error exacto de la consola</span>
+        <span class="acc-toggle">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p class="card-desc">No describas el error con tus palabras: copiá el mensaje exacto de la consola del navegador (F12 → Console). Eso le da contexto preciso.</p>
+          <div class="card-prompt">
+            <p class="card-prompt-label">prompt directo</p>
+            <p class="card-prompt-text">"Este código me da el siguiente error en la consola: [pegá el error]. ¿Qué está mal y cómo lo corrijo?"</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD — Alternativas -->
+    <div class="card tip">
+      <div class="card-head">
+        <span class="card-name">Pedile alternativas antes de comprometerte</span>
+        <span class="acc-toggle">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p class="card-desc">Si no sabés qué camino tomar, pedile opciones con distinto nivel de complejidad. Elegís la que se ajusta al tiempo que tienen.</p>
+          <div class="card-prompt">
+            <p class="card-prompt-label">prompt directo</p>
+            <p class="card-prompt-text">"Dame 3 formas distintas de traducir la proximidad entre dos objetos en un cambio visual. Una muy simple, una intermedia y una más elaborada."</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARD — Explicar antes -->
+    <div class="card tip">
+      <div class="card-head">
+        <span class="card-name">Pedile que explique antes de escribir</span>
+        <span class="acc-toggle">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p class="card-desc">Si te entrega código que no entendés, no lo uses todavía. Pedile que te diga qué va a hacer en lenguaje simple.</p>
+          <div class="card-prompt">
+            <p class="card-prompt-label">antes de ejecutar</p>
+            <p class="card-prompt-text">"Antes de escribir el código, explicame en 3 pasos qué va a hacer y qué librerías va a usar. Después lo escribís."</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- /slides -->
+
+<div id="nav">
+  <button class="nav-btn" id="btn-prev">←</button>
+  <div class="nav-sep"></div>
+  <button class="nav-dot active" data-i="0"></button>
+  <button class="nav-dot" data-i="1"></button>
+  <button class="nav-dot" data-i="2"></button>
+  <button class="nav-dot" data-i="3"></button>
+  <button class="nav-dot" data-i="4"></button>
+  <button class="nav-dot" data-i="5"></button>
+  <button class="nav-dot" data-i="6"></button>
+  <div class="nav-sep"></div>
+  <button class="nav-btn" id="btn-next">→</button>
+  <div class="nav-sep"></div>
+  <span id="slide-counter">0 / 6</span>
+</div>
+
+<script>
+(function(){
+
+  /* ── BG CANVAS — warm particle field ── */
+  const cv = document.getElementById('bg-canvas');
+  const cx = cv.getContext('2d');
+  let W, H, pts = [];
+
+  function resize(){ W = cv.width = innerWidth; H = cv.height = innerHeight; makePts(); }
+  function makePts(){
+    pts = [];
+    const n = Math.floor(W * H / 18000);
+    for(let i=0;i<n;i++) pts.push({
+      x: Math.random()*W, y: Math.random()*H,
+      vx:(Math.random()-.5)*.12, vy:(Math.random()-.5)*.12,
+      r: Math.random()*.8+.2,
+      a: Math.random()*.35+.08,
+      hue: Math.random() > .6 ? 'rgba(201,168,108,' : 'rgba(138,173,159,'
+    });
+  }
+  function drawBg(){
+    cx.clearRect(0,0,W,H);
+    for(let i=0;i<pts.length;i++){
+      const p = pts[i];
+      p.x += p.vx; p.y += p.vy;
+      if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+      if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+      cx.beginPath(); cx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      cx.fillStyle = p.hue + p.a + ')'; cx.fill();
+      for(let j=i+1;j<pts.length;j++){
+        const q=pts[j], dx=p.x-q.x, dy=p.y-q.y, d=Math.sqrt(dx*dx+dy*dy);
+        if(d<100){
+          cx.beginPath(); cx.moveTo(p.x,p.y); cx.lineTo(q.x,q.y);
+          cx.strokeStyle = 'rgba(201,168,108,'+(0.04*(1-d/100))+')';
+          cx.lineWidth=.4; cx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(drawBg);
+  }
+  window.addEventListener('resize', resize);
+  resize(); drawBg();
+
+  /* ── SLIDES ── */
+  const slides  = document.querySelectorAll('.slide');
+  const dots    = document.querySelectorAll('.nav-dot');
+  const counter = document.getElementById('slide-counter');
+  let cur = 0;
+
+  function goTo(n){
+    if(n < 0 || n >= slides.length) return;
+    slides[cur].classList.remove('active');
+    slides[cur].classList.add('exit');
+    const old = cur;
+    setTimeout(()=>{ slides[old].classList.remove('exit'); }, 600);
+    cur = n;
+    slides[cur].classList.add('active');
+    dots.forEach((d,i) => d.classList.toggle('active', i===cur));
+    counter.textContent = cur + ' / ' + (slides.length-1);
+  }
+
+  document.getElementById('btn-prev').addEventListener('click', ()=>goTo(cur-1));
+  document.getElementById('btn-next').addEventListener('click', ()=>goTo(cur+1));
+  dots.forEach(d => d.addEventListener('click', ()=>goTo(+d.dataset.i)));
+  document.addEventListener('keydown', e=>{
+    if(e.key==='ArrowRight' || e.key===' ') goTo(cur+1);
+    if(e.key==='ArrowLeft') goTo(cur-1);
+  });
+  let touchX = 0;
+  document.addEventListener('touchstart', e=>{ touchX = e.touches[0].clientX; });
+  document.addEventListener('touchend',   e=>{ const dx=e.changedTouches[0].clientX-touchX; if(Math.abs(dx)>60) goTo(dx<0?cur+1:cur-1); });
+
+  /* ── EXTERNAL LINKS ── */
+  document.querySelectorAll('a[href]').forEach(a => {
+    a.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); window.open(a.href,'_blank','noopener'); });
+  });
+
+  /* ── ACORDEONES TIPS ── */
+  document.querySelectorAll('.card.tip').forEach(card => {
+    card.addEventListener('click', e => {
+      // No abrir si el click fue en un link interno
+      if (e.target.closest('a')) return;
+      const isOpen = card.classList.contains('open');
+      // Cerrar todos
+      document.querySelectorAll('.card.tip.open').forEach(c => c.classList.remove('open'));
+      // Abrir el clickeado si estaba cerrado
+      if (!isOpen) card.classList.add('open');
+    });
+  });
+
+})();
+</script>
+</body>
+</html>
